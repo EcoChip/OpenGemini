@@ -97,20 +97,19 @@
     </div>
 
     <script>
-    // CONFIGURACIÓN DE ECOCHIP
+    // CONFIGURACIÓN ECOCHIP
     const API_KEY = "AIzaSyDVE_zXSfwo5B-RGna9iqwPzp4xnwLvfks"; 
-    const MODELO = "gemini-1.5-flash"; // El más rápido para el Wi-Fi del cole
+    const MODELO = "gemini-1.5-flash"; 
     
     const chatBox = document.getElementById('chatBox');
     const userInput = document.getElementById('userInput');
     const typingIndicator = document.getElementById('typingIndicator');
 
-    // Cargar historial de LocalStorage
     let chatHistory = JSON.parse(localStorage.getItem('opengemini_history')) || [];
     
     window.onload = () => {
         if (chatHistory.length === 0) {
-            addMessageToUI("bot", "¡Hola! Soy OpenGemini, desarrollado por ecochip. ¿En qué te puedo ayudar hoy?");
+            addMessageToUI("bot", "¡Hola! Soy OpenGemini de ecochip. ¿Qué vamos a investigar hoy?");
         } else {
             chatHistory.forEach(msg => addMessageToUI(msg.role, msg.text));
         }
@@ -118,23 +117,22 @@
 
     function handleEnter(event) {
         if (event.key === 'Enter') sendMessage();
+        // BOTÓN DE PÁNICO: Si pulsas la tecla "Escape", se va a Wikipedia
+        if (event.key === 'Escape') panic();
     }
 
     async function sendMessage() {
         const text = userInput.value.trim();
         if (!text) return;
 
-        // 1. Mostrar mensaje del usuario
         addMessageToUI("user", text);
         saveToHistory("user", text);
         userInput.value = '';
         
-        // 2. Mostrar indicador de carga
         typingIndicator.style.display = 'block';
         chatBox.scrollTop = chatBox.scrollHeight;
 
-        // 3. Petición a la API de Google
-        // Usamos la v1 estable para evitar el 404 de la v1beta
+        // --- LA URL CORREGIDA (v1 en lugar de v1beta) ---
         const url = `https://generativelanguage.googleapis.com/v1/models/${MODELO}:generateContent?key=${API_KEY}`;
 
         try {
@@ -142,20 +140,17 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: text }]
-                    }]
+                    contents: [{ parts: [{ text: text }] }]
                 })
             });
 
             const data = await response.json();
 
             if (!response.ok) {
-                // Si hay error (404, 400, 403), lo mostramos para saber qué pasa
-                throw new Error(data.error ? data.error.message : "Error desconocido");
+                // Si vuelve a dar 404, el error saldrá aquí detallado
+                throw new Error(data.error ? data.error.message : "Error de ruta");
             }
 
-            // 4. Extraer respuesta de Gemini
             const botReply = data.candidates[0].content.parts[0].text;
             
             typingIndicator.style.display = 'none';
@@ -164,38 +159,33 @@
 
         } catch (error) {
             typingIndicator.style.display = 'none';
-            console.error("Error completo:", error);
-            addMessageToUI("bot", `⚠️ ecochip_error: ${error.message}`);
+            addMessageToUI("bot", `⚠️ ecochip_system: ${error.message}. Verifica si la API Key está activa en Google AI Studio.`);
         }
     }
 
     function addMessageToUI(role, text) {
         const msgDiv = document.createElement('div');
         msgDiv.classList.add('message', role);
-        
-        // Convertimos el formato Markdown simple de Gemini a HTML
-        let formattedText = text
-            .replace(/\n/g, '<br>') // Saltos de línea
-            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // Negritas
-            
-        msgDiv.innerHTML = formattedText;
+        msgDiv.innerHTML = text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     function saveToHistory(role, text) {
         chatHistory.push({ role, text });
-        // Guardamos máximo 20 mensajes para no petar el almacenamiento
-        if (chatHistory.length > 20) chatHistory.shift(); 
+        if (chatHistory.length > 30) chatHistory.shift(); 
         localStorage.setItem('opengemini_history', JSON.stringify(chatHistory));
     }
 
+    // BOTÓN DE PÁNICO
+    function panic() {
+        window.location.href = "https://es.wikipedia.org/wiki/Matemáticas";
+    }
+
     function clearChat() {
-        if(confirm("¿Ecochip: Confirmas borrar el historial?")) {
+        if(confirm("¿Borrar historial de ecochip?")) {
             localStorage.removeItem('opengemini_history');
-            chatHistory = [];
-            chatBox.innerHTML = '';
-            addMessageToUI("bot", "Historial borrado. ¿Empezamos de nuevo?");
+            location.reload();
         }
     }
 </script>
