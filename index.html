@@ -97,87 +97,108 @@
     </div>
 
     <script>
-        // TU API KEY DIRECTA
-        const API_KEY = "AIzaSyDVE_zXSfwo5B-RGna9iqwPzp4xnwLvfks";
-        const chatBox = document.getElementById('chatBox');
-        const userInput = document.getElementById('userInput');
-        const typingIndicator = document.getElementById('typingIndicator');
+    // CONFIGURACIÓN DE ECOCHIP
+    const API_KEY = "AIzaSyDVE_zXSfwo5B-RGna9iqwPzp4xnwLvfks"; 
+    const MODELO = "gemini-1.5-flash"; // El más rápido para el Wi-Fi del cole
+    
+    const chatBox = document.getElementById('chatBox');
+    const userInput = document.getElementById('userInput');
+    const typingIndicator = document.getElementById('typingIndicator');
 
-        // Cargar historial al inicio
-        let chatHistory = JSON.parse(localStorage.getItem('opengemini_history')) || [];
+    // Cargar historial de LocalStorage
+    let chatHistory = JSON.parse(localStorage.getItem('opengemini_history')) || [];
+    
+    window.onload = () => {
+        if (chatHistory.length === 0) {
+            addMessageToUI("bot", "¡Hola! Soy OpenGemini, desarrollado por ecochip. ¿En qué te puedo ayudar hoy?");
+        } else {
+            chatHistory.forEach(msg => addMessageToUI(msg.role, msg.text));
+        }
+    };
+
+    function handleEnter(event) {
+        if (event.key === 'Enter') sendMessage();
+    }
+
+    async function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        // 1. Mostrar mensaje del usuario
+        addMessageToUI("user", text);
+        saveToHistory("user", text);
+        userInput.value = '';
         
-        window.onload = () => {
-            if (chatHistory.length === 0) {
-                addMessageToUI("bot", "¡Hola! Soy OpenGemini, desarrollado por ecochip. ¿En qué te puedo ayudar hoy?");
-            } else {
-                chatHistory.forEach(msg => addMessageToUI(msg.role, msg.text, false));
+        // 2. Mostrar indicador de carga
+        typingIndicator.style.display = 'block';
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        // 3. Petición a la API de Google
+        // Usamos la v1 estable para evitar el 404 de la v1beta
+        const url = `https://generativelanguage.googleapis.com/v1/models/${MODELO}:generateContent?key=${API_KEY}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: text }]
+                    }]
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                // Si hay error (404, 400, 403), lo mostramos para saber qué pasa
+                throw new Error(data.error ? data.error.message : "Error desconocido");
             }
-        };
 
-        function handleEnter(event) {
-            if (event.key === 'Enter') sendMessage();
-        }
-
-        async function sendMessage() {
-            const text = userInput.value.trim();
-            if (!text) return;
-
-            // Mostrar mensaje del usuario
-            addMessageToUI("user", text);
-            saveToHistory("user", text);
-            userInput.value = '';
+            // 4. Extraer respuesta de Gemini
+            const botReply = data.candidates[0].content.parts[0].text;
             
-            // Mostrar "Escribiendo..."
-            typingIndicator.style.display = 'block';
-            chatBox.scrollTop = chatBox.scrollHeight;
+            typingIndicator.style.display = 'none';
+            addMessageToUI("bot", botReply);
+            saveToHistory("bot", botReply);
 
-            try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                    contents: [{ parts: [{ text: text }] }] 
-                    })
-                });
-                const data = await response.json();
-                let botReply = "Lo siento, ha habido un error en la Matrix.";
-                
-                if (data.candidates && data.candidates.length > 0) {
-                    botReply = data.candidates[0].content.parts[0].text;
-                }
-
-                typingIndicator.style.display = 'none';
-                addMessageToUI("bot", botReply);
-                saveToHistory("bot", botReply);
-
-            } catch (error) {
-                typingIndicator.style.display = 'none';
-                addMessageToUI("bot", "⚠️ Error de conexión. Revisa el Wi-Fi o la API Key.");
-            }
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            console.error("Error completo:", error);
+            addMessageToUI("bot", `⚠️ ecochip_error: ${error.message}`);
         }
+    }
 
-        function addMessageToUI(role, text, animate = true) {
-            const msgDiv = document.createElement('div');
-            msgDiv.classList.add('message', role);
-            // Reemplazar saltos de línea por <br> para que se lea bien
-            msgDiv.innerHTML = text.replace(/\n/g, '<br>');
-            chatBox.appendChild(msgDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
+    function addMessageToUI(role, text) {
+        const msgDiv = document.createElement('div');
+        msgDiv.classList.add('message', role);
+        
+        // Convertimos el formato Markdown simple de Gemini a HTML
+        let formattedText = text
+            .replace(/\n/g, '<br>') // Saltos de línea
+            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // Negritas
+            
+        msgDiv.innerHTML = formattedText;
+        chatBox.appendChild(msgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
 
-        function saveToHistory(role, text) {
-            chatHistory.push({ role, text });
-            localStorage.setItem('opengemini_history', JSON.stringify(chatHistory));
-        }
+    function saveToHistory(role, text) {
+        chatHistory.push({ role, text });
+        // Guardamos máximo 20 mensajes para no petar el almacenamiento
+        if (chatHistory.length > 20) chatHistory.shift(); 
+        localStorage.setItem('opengemini_history', JSON.stringify(chatHistory));
+    }
 
-        function clearChat() {
-            if(confirm("¿Seguro que quieres borrar el historial actual?")) {
-                localStorage.removeItem('opengemini_history');
-                chatHistory = [];
-                chatBox.innerHTML = '';
-                addMessageToUI("bot", "¡Hola! Soy OpenGemini, desarrollado por ecochip. ¿En qué te puedo ayudar hoy?");
-            }
+    function clearChat() {
+        if(confirm("¿Ecochip: Confirmas borrar el historial?")) {
+            localStorage.removeItem('opengemini_history');
+            chatHistory = [];
+            chatBox.innerHTML = '';
+            addMessageToUI("bot", "Historial borrado. ¿Empezamos de nuevo?");
         }
-    </script>
+    }
+</script>
 </body>
 </html>
+
